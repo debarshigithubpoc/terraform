@@ -1,0 +1,1 @@
+variable "private_endpoint_storage" {}

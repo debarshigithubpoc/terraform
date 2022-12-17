@@ -1,0 +1,1 @@
+variable "data_factory_private_endpoint" {}

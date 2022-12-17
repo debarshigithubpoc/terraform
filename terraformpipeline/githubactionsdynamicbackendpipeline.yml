@@ -1,0 +1,87 @@
+name: "Terraformdyanmicbackend"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: Choose the environment
+        options:
+          - dev
+          - staging
+          - prod
+      action:
+        type: choice
+        description: Mention the Terraform Action
+        options:
+          - plan
+          - apply
+          - destroy
+      backendrg:
+        type: choice
+        description: Mention the Terraform Backend rg name
+        options:
+          - rg1
+      backendstorageaccount:
+        type: choice
+        description: Mention the Terraform Backend storage account
+        options:
+          - strgstatefiledev
+      backendcontainer:
+        type: choice
+        description: Mention the Terraform Backend container
+        options:
+          - container1
+
+jobs:
+  terraformpipeline:
+    runs-on: ubuntu-latest
+
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_AD_CLIENT_ID_DEV }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_AD_CLIENT_SECRET_DEV }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID_DEV }}
+    
+    defaults:
+      run:
+        working-directory: "./terraform_working_directory"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.1.2
+
+      - name: "Install Checkov"
+        run: pip3 install checkov==2.2.114
+
+      - name: "Install Azure CLI"
+        run: curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+      - name: Terraform Init with backend
+        id: init
+        run: terraform init -backend-config="resource_group_name=${{github.event.inputs.backendrg}}" -backend-config="storage_account_name=${{github.event.inputs.backendstorageaccount}}" -backend-config="container_name=${{github.event.inputs.backendcontainer}}" -backend-config="key=${{github.event.inputs.environment}}.terraform.tfstate"
+
+      - name: Checkov Analysis
+        id: Checkov
+        run: |
+          terraform plan -var-file="terraform${{github.event.inputs.environment}}.tfvars" --out tfplan.binary
+          terraform show -json tfplan.binary > tfplan.json
+          checkov -f tfplan.json
+      - name: Terraform Plan
+        if: github.event.inputs.action == 'plan'
+        id: plan
+        run: terraform plan -var-file="terraform${{github.event.inputs.environment}}.tfvars"
+
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply'
+        id: apply
+        run: terraform apply -var-file="terraform${{github.event.inputs.environment}}.tfvars" --auto-approve
+
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
+        id: destroy
+        run: terraform destroy -var-file="terraform${{github.event.inputs.environment}}.tfvars" --auto-approve

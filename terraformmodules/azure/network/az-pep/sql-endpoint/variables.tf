@@ -1,0 +1,1 @@
+variable "private_endpoint_sql_server" {}

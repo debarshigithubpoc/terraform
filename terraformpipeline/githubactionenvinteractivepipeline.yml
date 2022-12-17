@@ -1,0 +1,66 @@
+name: "Terraform"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: Choose the environment
+        options:
+          - dev
+          - staging
+          - prod
+      action:
+        type: choice
+        description: Mention the Terraform Action
+        options:
+          - plan
+          - apply
+          - destroy
+
+jobs:
+  terraformpipeline:
+    runs-on: ubuntu-latest
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_AD_CLIENT_ID_DEV }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_AD_CLIENT_SECRET_DEV }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID_DEV }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: "Install Azure CLI"
+        run: curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+        
+      - name: "Terraform Init"
+        uses: hashicorp/terraform-github-actions@master
+        with:
+          tf_actions_version: 1.0.3
+          tf_actions_subcommand: "init"
+          tf_actions_working_dir: "./env/${{github.event.inputs.environment}}"
+
+      - name: "Terraform plan"
+        if: github.event.inputs.action == 'plan'
+        uses: hashicorp/terraform-github-actions@master
+        with:
+          tf_actions_version: 1.0.3
+          tf_actions_subcommand: "plan"
+          tf_actions_working_dir: "./env/${{github.event.inputs.environment}}"
+
+      - name: "Terraform Apply"
+        if: github.event.inputs.action == 'apply'
+        uses: hashicorp/terraform-github-actions@master
+        with:
+          tf_actions_version: 1.0.3
+          tf_actions_subcommand: "apply --auto-approve"
+          tf_actions_working_dir: "./env/${{github.event.inputs.environment}}"
+
+      - name: "Terraform Destroy"
+        if: github.event.inputs.action == 'destroy'
+        uses: hashicorp/terraform-github-actions@master
+        with:
+          tf_actions_version: 1.0.3
+          tf_actions_subcommand: "apply --auto-approve"
+          tf_actions_working_dir: "./env/${{github.event.inputs.environment}}"

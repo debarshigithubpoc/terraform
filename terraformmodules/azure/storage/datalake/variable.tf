@@ -1,0 +1,1 @@
+variable "azure_data_lake" {}

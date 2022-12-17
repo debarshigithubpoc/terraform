@@ -1,0 +1,54 @@
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+
+- task: TerraformTaskV2@2
+  displayName: 'Terraform : INIT'
+  inputs:
+    command: 'init'
+    workingDirectory: 'terraform_ICFF_working_directory'
+    backendServiceArm: 'enterprise_tennant_azure'
+    backendAzureRmResourceGroupName: 'state_file'
+    backendAzureRmStorageAccountName: 'terrstenterpoc'
+    backendAzureRmContainerName: 'tfstateterraform'
+    backendAzureRmKey: 'icffterraform.tfstate'
+
+- task: TerraformTaskV1@0
+  inputs:
+    provider: 'azurerm'
+    command: 'plan'
+    workingDirectory: 'terraform_ICFF_working_directory'
+    commandOptions: '--out tfplan.binary'
+    environmentServiceNameAzureRM: 'enterprise_tennant_azure'
+
+- task: AzureCLI@2
+  displayName: 'In this stage we are running compliance scan of our code using checkov'
+  inputs:
+    azureSubscription: 'enterprise_tennant_azure'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      sudo apt update
+      sudo apt install software-properties-common
+      sudo add-apt-repository ppa:deadsnakes/ppa
+      sudo apt install python3.7
+      sudo apt install python3-pip
+      sudo python3.7 -m pip install -U checkov
+      terraform show -json tfplan.binary > tfplan.json
+      sudo chmod a+rwx $(pwd)
+      sudo checkov -f tfplan.json --soft-fail --output junitxml > $(System.DefaultWorkingDirectory)/CheckovReport.xml
+    workingDirectory: 'terraform_ICFF_working_directory'
+
+- task: PublishTestResults@2
+  inputs:
+    testResultsFormat: 'JUnit'
+    testResultsFiles: 'CheckovReport.xml'
+
+- task: TerraformTaskV1@0
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    workingDirectory: 'terraform_ICFF_working_directory'
+    commandOptions: '--auto-approve'
+    environmentServiceNameAzureRM: 'enterprise_tennant_azure'

@@ -1,0 +1,98 @@
+name: "TerraformPipelinemain"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  terraform:
+    name: "Terraform"
+    
+    runs-on: ubuntu-latest
+
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_AD_CLIENT_ID_DEV }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_AD_CLIENT_SECRET_DEV }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID_DEV }}
+    
+    defaults:
+      run:
+        working-directory: "./env/dev"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.1.2
+
+      - name: "Install Checkov"
+        run: pip3 install checkov==2.2.114
+
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt
+
+      - name: Terraform Init
+        id: init
+        run: terraform init
+      
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        if: github.event_name == 'pull_request'
+        run: terraform plan -no-color -input=false
+        continue-on-error: true
+
+      - name: Checkov Pre Requisites
+        id: prereqcheckov
+        if: github.event_name == 'pull_request'
+        run: |
+          terraform plan --out tfplan.binary
+          terraform show -json tfplan.binary > tfplan.json
+      - name: Checkov Analysis
+        id: checkov
+        if: github.event_name == 'pull_request'
+        run: checkov -f tfplan.json
+
+      - uses: actions/github-script@v6
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
+          CHECKOV: "Checkov\n${{ steps.checkov.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+            <details><summary>Show Plan and Checkov Summary</summary>
+            \`\`\`\n
+            ${process.env.PLAN}
+            \`\`\`
+            \`\`\`\n
+            ${process.env.CHECKOV}
+            \`\`\`
+            </details>
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+      - name: Terraform Plan Status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'pull_request'
+        run: terraform apply -auto-approve -input=false

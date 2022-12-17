@@ -1,0 +1,1 @@
+variable "linux_web_app" {}
