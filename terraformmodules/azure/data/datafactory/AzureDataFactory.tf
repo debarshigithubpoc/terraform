@@ -1,7 +1,7 @@
 ## Azure data factory
 
 resource "azurerm_data_factory" "data_factory" {
-  name                = "adf-la-${var.data_factory.env}-uks-${var.data_factory.instance_number}"
+  name                = "adf-deb-${var.data_factory.env}-us-${var.data_factory.instance_number}"
   resource_group_name = var.data_factory.resource_group_name
   location            = var.data_factory.location
 
